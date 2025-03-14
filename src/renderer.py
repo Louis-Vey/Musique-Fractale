@@ -1,4 +1,6 @@
 from pathlib import Path
+from time import time
+from typing import *
 
 import moderngl as mgl
 import moderngl_window as mglw
@@ -17,39 +19,28 @@ class FractalRenderer(mglw.WindowConfig):
     mousePosition = (0, 0)
     imgui: ModernglWindowRenderer
 
-    mandelbrotVA: mgl.VertexArray
-    mandelbrotGradient = (66/255,  30/255,  15/255), (25/255,  7/255,   26/255), (9/255,   1/255,   47/255), \
-                         (4/255,   4/255,   73/255), (0/255,   7/255,   100/255),(12/255,  44/255,  138/255), \
-                         (24/255,  82/255,  177/255),(57/255,  125/255, 209/255),(134/255, 181/255, 229/255), \
-                         (211/255, 236/255, 248/255),(241/255, 233/255, 191/255),(248/255, 201/255, 95/255), \
-                         (255/255, 170/255, 0/255),  (204/255, 128/255, 0/255),  (153/255, 87/255,  0/255), \
-                         (106/255, 52/255,  3/255)
-
-    nthMandelbrotVA: mgl.VertexArray
-    nthMandelbrotGradient = (66/255,  30/255,  15/255), (25/255,  7/255,   26/255), (9/255,   1/255,   47/255), \
-                            (4/255,   4/255,   73/255), (0/255,   7/255,   100/255),(12/255,  44/255,  138/255), \
-                            (24/255,  82/255,  177/255),(57/255,  125/255, 209/255),(134/255, 181/255, 229/255), \
-                            (211/255, 236/255, 248/255),(241/255, 233/255, 191/255),(248/255, 201/255, 95/255), \
-                            (255/255, 170/255, 0/255),  (204/255, 128/255, 0/255),  (153/255, 87/255,  0/255), \
-                            (106/255, 52/255,  3/255)
-    nthMandelbrotPower = 2
-
-    juliaVA: mgl.VertexArray
-    juliaGradient = (66/255,  30/255,  15/255), (25/255,  7/255,   26/255), (9/255,   1/255,   47/255), \
-                            (4/255,   4/255,   73/255), (0/255,   7/255,   100/255),(12/255,  44/255,  138/255), \
-                            (24/255,  82/255,  177/255),(57/255,  125/255, 209/255),(134/255, 181/255, 229/255), \
-                            (211/255, 236/255, 248/255),(241/255, 233/255, 191/255),(248/255, 201/255, 95/255), \
-                            (255/255, 170/255, 0/255),  (204/255, 128/255, 0/255),  (153/255, 87/255,  0/255), \
-                            (106/255, 52/255,  3/255)
+    fractalsVA: Dict[str, mgl.VertexArray] = {}
+    currentFractal: str
+    julia: bool = False
     juliaC = [0., 0.]
+    smoothing = False
 
-    currentVA: mgl.VertexArray
+    nthMandelbrotPower = 2
+    nthMandelbrotAnimation = False
+    nthMandelbrotAnimationSpeed = 0.1
 
     center = [0., 0.]
     # distance sur le plan complexe entre le haut et le bas de l'écran
     # diminuer pour zoomer ; augmenter pour dézoomer
     zoom = 2.
-    limit = 5000
+    limit = 100
+
+    colorGradient = (66/255,  30/255,  15/255), (25/255,  7/255,   26/255), (9/255,   1/255,   47/255), \
+                    (4/255,   4/255,   73/255), (0/255,   7/255,   100/255),(12/255,  44/255,  138/255), \
+                    (24/255,  82/255,  177/255),(57/255,  125/255, 209/255),(134/255, 181/255, 229/255), \
+                    (211/255, 236/255, 248/255),(241/255, 233/255, 191/255),(248/255, 201/255, 95/255), \
+                    (255/255, 170/255, 0/255),  (204/255, 128/255, 0/255),  (153/255, 87/255,  0/255), \
+                    (106/255, 52/255,  3/255)
 
     # les vertices de 2 triangles incluant tout l'écran
     screenVertices = np.array((
@@ -67,50 +58,135 @@ class FractalRenderer(mglw.WindowConfig):
         super().__init__(**kwargs)
         imgui.create_context()
         self.imgui = ModernglWindowRenderer(self.wnd)
+        
+        io = imgui.get_io()
+        io.font_global_scale = 1.4
 
         self.screenVB = self.ctx.buffer(self.screenVertices.astype("f4").tobytes(), 0, True)
 
-        mandelbrot = self.load_program(vertex_shader = "fractal.vert", fragment_shader = "mandelbrot.frag")
-        mandelbrot["colorGradient"] = self.mandelbrotGradient
-        self.mandelbrotVA = self.ctx.vertex_array(mandelbrot, self.screenVB, "in_vert")
+        self.loadFractale("mandelbrot")
+        self.loadFractale("nthMandelbrot")
+        self.loadFractale("burningShip")
 
-        nthMandelbrot = self.load_program(vertex_shader = "fractal.vert", fragment_shader = "nthMandelbrot.frag")
-        nthMandelbrot["colorGradient"] = self.nthMandelbrotGradient
-        self.nthMandelbrotVA = self.ctx.vertex_array(nthMandelbrot, self.screenVB, "in_vert")
-
-        julia = self.load_program(vertex_shader = "fractal.vert", fragment_shader = "julia.frag")
-        julia["colorGradient"] = self.juliaGradient
-        self.juliaVA = self.ctx.vertex_array(julia, self.screenVB, "in_vert")
-
-        self.currentVA = self.mandelbrotVA
+        self.currentFractal = "mandelbrot"
         self.update_fractal()
 
+    def loadFractale(self, name: str):
+        print({name.upper():1})
+        program = self.load_program(path="fractal.glsl", defines={name.upper():"1"})
+        program["colorGradient"] = self.colorGradient
+        self.fractalsVA[name] = self.ctx.vertex_array(program, self.screenVB, "in_vert")
+
+    def currentVA(self) -> mgl.VertexArray:
+        return self.fractalsVA[self.currentFractal]
+
     def update_fractal(self):
-        p = self.currentVA.program
+        p = self.currentVA().program
         p["screenSize"] = self.wnd.size
         p["center"] = self.center
         p["zoom"] = self.zoom * self.wnd.size[0] / self.wnd.size[1], self.zoom
         p["limit"] = self.limit
-        if self.currentVA == self.nthMandelbrotVA:
+        p["smoothing"] = self.smoothing
+        p["julia"] = self.julia
+        if self.currentFractal == "nthMandelbrot":
             p["power"] = self.nthMandelbrotPower
-        if self.currentVA == self.juliaVA:
-            p["c"] = self.juliaC
+            p["halvedPower"] = self.nthMandelbrotPower / 2
+        if self.julia:
+            p["juliaC"] = self.juliaC
 
-    def on_render(self, time, frameTime):
-        self.currentVA.render(mgl.TRIANGLES)
-        # self.nthMandelbrotVA.program["power"] = self.nthMandelbrotVA.program["power"].value + frameTime * 0.1
+    def resetZoom(self):
+        "Il faut appeler update_fractal après pour que cette function fasse effet"
+        self.zoom = 2
+        self.center = [0, 0]
 
-        # self.renderUi(time, frameTime)
+    def on_render(self, currentTime, deltaTime):
+        self.wnd.clear()
+        self.currentVA().render(mgl.TRIANGLES)
 
-    def renderUi(self, time, frameTime):
+        self.renderUi(currentTime, deltaTime)
+
+        if self.nthMandelbrotAnimation:
+            self.nthMandelbrotPower += self.nthMandelbrotAnimationSpeed * deltaTime
+            self.update_fractal()
+
+    def fNumber(self, x: float) -> str:
+        if x == 0: return "0"
+        a = np.abs(x)
+        if a < 10 and a > 0.01: return str(np.round(x, 4))
+        return np.format_float_scientific(x, 2)
+
+    def renderUi(self, currentTime, deltaTime):
         imgui.new_frame()
-        imgui.set_next_window_pos((0,0), imgui.Cond_.appearing.value)
-        imgui.set_next_window_size((30,20), imgui.Cond_.appearing.value)
 
-        imgui.begin("Settings")
-        imgui.text("Bar")
-        imgui.text_colored(imgui.ImVec4(0.2, 1.0, 0.0, 1.0), "Eggs")
+        imgui.set_next_window_pos((0, 0), imgui.Cond_.appearing)
+        imgui.begin("Paramètres", None,
+                    imgui.WindowFlags_.no_move | imgui.WindowFlags_.always_auto_resize)
+
+        imgui.text(f"FPS: {np.round(self.timer.fps, 1)}")
+        screenRatio = self.wnd.size[0] / self.wnd.size[1]
+        x = (self.mousePosition[0] / self.wnd.size[0] - 0.5) * self.zoom * screenRatio + self.center[0]
+        y = -(self.mousePosition[1] / self.wnd.size[1] - 0.5) * self.zoom + self.center[1]
+        imgui.text(f"Position: {self.fNumber(x)} + {self.fNumber(y)}i")
+
+        if (imgui.begin_combo("##", self.currentFractal)):
+            for name in self.fractalsVA.keys():
+                imgui.push_id(name)
+                selected = name == self.currentFractal
+                s = imgui.selectable(name, selected)
+                if s[1] and not selected:
+                    self.currentFractal = name
+                    self.resetZoom()
+                    self.update_fractal()
+                imgui.pop_id()
+
+            imgui.end_combo()
+
+        imgui.text(f"  Nom: {"test"}")
+        imgui.text(f"  Centre: {self.fNumber(self.center[0])} + {self.fNumber(self.center[1])}i")
+        imgui.text(f"  Zoom: {self.fNumber(self.zoom)}")
+        imgui.text(f"  Précision")
+        imgui.same_line()
+        s = imgui.slider_int("##Limit", self.limit, 10, 100000, flags=imgui.SliderFlags_.logarithmic)
+        if (s[0]):
+            self.limit = s[1]
+            self.update_fractal()
+        
+        imgui.text(f"  Dégradé")
+        imgui.same_line()
+        c = imgui.checkbox("##Smoothing", self.smoothing)
+        if (c[0]):
+            self.smoothing = c[1]
+            self.update_fractal()
+        
+        if (self.julia):
+            imgui.text(f"  Julia C: {self.fNumber(self.juliaC[0])} + {self.fNumber(self.juliaC[1])}i")
+
+        if (self.currentFractal == "nthMandelbrot"):
+            imgui.text(f"  Puissance")
+            imgui.same_line()
+            s = imgui.slider_float("##Power", self.nthMandelbrotPower, 2, 10)
+            if (s[0]):
+                self.nthMandelbrotPower = s[1]
+                self.update_fractal()
+
+            imgui.text(f"  Animation")
+            imgui.same_line()
+            c = imgui.checkbox("##Animation", self.nthMandelbrotAnimation)
+            if (c[0]):
+                self.nthMandelbrotAnimation = c[1]
+                self.update_fractal()
+
+            imgui.text(f"  Vitesse: ")
+            imgui.same_line()
+            s = imgui.slider_float("##Vitesse", self.nthMandelbrotAnimationSpeed, 0.05, 1)
+            if (s[0]):
+                self.nthMandelbrotAnimationSpeed = s[1]
+                self.update_fractal()
+
         imgui.end()
+
+        test = imgui.get_background_draw_list()
+        test.add_circle_filled((0, 0), 50, 0xffff)
 
         imgui.render()
         self.imgui.render(imgui.get_draw_data())
@@ -150,18 +226,16 @@ class FractalRenderer(mglw.WindowConfig):
         self.imgui.mouse_press_event(x, y, button)
 
         if button == 2:
-            if self.currentVA == self.mandelbrotVA:
+            if not self.julia:
                 screenRatio = self.wnd.size[0] / self.wnd.size[1]
                 self.juliaC[0] = (x / self.wnd.size[0] - 0.5) * self.zoom * screenRatio + self.center[0]
                 self.juliaC[1] = -(y / self.wnd.size[1] - 0.5) * self.zoom + self.center[1]
-                self.currentVA = self.juliaVA
-                self.zoom = 2
-                self.center = [0, 0]
+                self.julia = True
+                self.resetZoom()
 
-            elif self.currentVA == self.juliaVA:
-                self.currentVA = self.mandelbrotVA
-                self.zoom = 2
-                self.center = [0, 0]
+            elif self.julia:
+                self.julia = False
+                self.resetZoom()
             
             self.update_fractal()
 
