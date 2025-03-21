@@ -2,8 +2,6 @@ fonctionnalités:
     - dessiner des fractales: Mandelbrot set, Julia's sets, burning ship
     - pouvoir ajouter facilement des nouvelles fractales
     - zoom
-    - cliquer pour afficher le chemin que prend la série de la fractale à ce point
-    - cliquer pour entendre le son que fait la série
     - un menu pour les options:
         * la fractale sélectionné
         * precision (+ une configuration automatique selon le zoom)

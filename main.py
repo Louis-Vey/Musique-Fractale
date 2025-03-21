@@ -1,5 +1,4 @@
 from pathlib import Path
-from time import time
 from typing import *
 
 import moderngl as mgl
@@ -15,11 +14,12 @@ class FractalRenderer(mglw.WindowConfig):
     title = "Musique Fractale"
     window_size = (800, 450)
     aspect_ratio = None
-    resource_dir = shaderDir = (Path(__file__) / "../../shaders").resolve()
+    resource_dir = shaderDir = (Path(__file__) / "../shaders").resolve()
     mousePosition = (0, 0)
     imgui: ModernglWindowRenderer
 
-    fractalsVA: Dict[str, mgl.VertexArray] = {}
+    fractalVAs: Dict[str, mgl.VertexArray] = {}
+    fractalFormulas: Dict[str, Tuple[str]] = {}
     currentFractal: str
     julia: bool = False
     juliaC = [0., 0.]
@@ -64,21 +64,26 @@ class FractalRenderer(mglw.WindowConfig):
 
         self.screenVB = self.ctx.buffer(self.screenVertices.astype("f4").tobytes(), 0, True)
 
-        self.loadFractale("mandelbrot")
-        self.loadFractale("nthMandelbrot")
-        self.loadFractale("burningShip")
+        self.loadFractale("mandelbrot",   ("z = z² + c",))
+        self.loadFractale("nthMandelbrot",("z = z^n + c",))
+        self.loadFractale("burningShip",  ("z = (a+bi)","  = (|a|+|b|i)² + c",))
+        self.loadFractale("sin",          ("z = sin(z) + c",))
+        self.loadFractale("cos",          ("z = cos(z) + c",))
+        self.loadFractale("chirikov",     ("za = za + ca(zb + cb*sin(za))","zb = zb + cb*sin(za)",))
+        self.loadFractale("duffing",      ("za = zb","zb = -cb*za + ca*zb - zb³",))
+        self.loadFractale("feather",      ("z = z³ / (z²+1) + c",))
 
         self.currentFractal = "mandelbrot"
         self.update_fractal()
 
-    def loadFractale(self, name: str):
-        print({name.upper():1})
+    def loadFractale(self, name: str, formula: Tuple[str]):
         program = self.load_program(path="fractal.glsl", defines={name.upper():"1"})
         program["colorGradient"] = self.colorGradient
-        self.fractalsVA[name] = self.ctx.vertex_array(program, self.screenVB, "in_vert")
+        self.fractalVAs[name] = self.ctx.vertex_array(program, self.screenVB, "in_vert")
+        self.fractalFormulas[name] = formula
 
     def currentVA(self) -> mgl.VertexArray:
-        return self.fractalsVA[self.currentFractal]
+        return self.fractalVAs[self.currentFractal]
 
     def update_fractal(self):
         p = self.currentVA().program
@@ -129,7 +134,7 @@ class FractalRenderer(mglw.WindowConfig):
         imgui.text(f"Position: {self.fNumber(x)} + {self.fNumber(y)}i")
 
         if (imgui.begin_combo("##", self.currentFractal)):
-            for name in self.fractalsVA.keys():
+            for name in self.fractalVAs.keys():
                 imgui.push_id(name)
                 selected = name == self.currentFractal
                 s = imgui.selectable(name, selected)
@@ -141,7 +146,11 @@ class FractalRenderer(mglw.WindowConfig):
 
             imgui.end_combo()
 
-        imgui.text(f"  Nom: {"test"}")
+        formula = self.fractalFormulas[self.currentFractal]
+        imgui.text(f"  Formule: {formula[0]}")
+        for i in range(1, len(formula)):
+            imgui.text(f"           {formula[i]}")
+
         imgui.text(f"  Centre: {self.fNumber(self.center[0])} + {self.fNumber(self.center[1])}i")
         imgui.text(f"  Zoom: {self.fNumber(self.zoom)}")
         imgui.text(f"  Précision")
@@ -204,6 +213,8 @@ class FractalRenderer(mglw.WindowConfig):
 
     def on_mouse_drag_event(self, x, y, dx, dy):
         self.imgui.mouse_drag_event(x, y, dx, dy)
+        if imgui.is_any_item_active(): return
+
         self.mousePosition = (x, y)
 
         self.center[0] += -dx * self.zoom / self.wnd.size[1]
@@ -245,3 +256,6 @@ class FractalRenderer(mglw.WindowConfig):
 
     def on_unicode_char_entered(self, char):
         self.imgui.unicode_char_entered(char)
+
+if __name__ == "__main__":
+    FractalRenderer.run()

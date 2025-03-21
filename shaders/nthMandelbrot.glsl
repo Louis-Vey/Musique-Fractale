@@ -1,8 +1,6 @@
 #ifndef NTH_MANDELBROT_INCLUDE
 #define NTH_MANDELBROT_INCLUDE
 
-#define MAX_MAGNITUDE 2
-
 uniform float power;
 uniform float halvedPower;
 
@@ -13,6 +11,10 @@ vec2 compute(vec2 z, vec2 sqz, vec2 c) {
     float rn = pow(sqz.x + sqz.y, halvedPower); // sqrt(x)^n = x^(n/2)
 
     return rn * vec2(cos(delta), sin(delta)) + c;
+}
+
+bool inside(vec2 z, vec2 sqz) {
+    return sqz.x + sqz.y < 4;
 }
 
 #endif

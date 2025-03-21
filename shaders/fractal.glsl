@@ -10,24 +10,26 @@ void main() {
 
 #elif defined FRAGMENT_SHADER
 
-// Affiche l'ensemble de julia de la fractale sélectionné en juliaC
-uniform bool julia;
-uniform vec2 juliaC;
-
 // Chaque fractales a son propre shader, créer avec un define différent pour chaque une.
 // Les fichiers des fractales qui sont include en dessous doivent tous avoir une
 // function appeler "compute" qui prend en paramètre les vec2 z, sqz(=z^2) et c
 // et doivent renvoyer un vec2.
-// Je conseil de marquer la compute comme inline.
-// Ces fichiers doivent aussi définir le #define MAX_MAGNITUDE.
-// Les points sont considérés dans la fractale quand |z| > MAX_MAGNITUDE.
+// Ces fichiers doivent aussi contenir une function appeler "inside" qui prend
+// en paramètre les vec2 z et sqz et renvoie un bool. Un point en dehors de la
+// fractale si inside renvoie false à un moment.
 // Ils peuvent aussi ajouter des variables uniform pour les utilisés dans compute.
-// sqz est passé à la function avec il est utilisé pour calculé |z| et peut être réutiliser
-// pour certaines function. Si la fractale ne l'utilise pas, le compiler devrait (au conditionnel)
-// retirer tout seul l'argument.
+// sqz est passé à la function car il est utilisé pour calculé |z| et peut être réutiliser
+// pour certaines function. Si la fractale ne l'utilise pas, le compiler devrait (normalement)
+// retirer tout seul l'argument après avoir inline la function.
 #define MANDELBROT 0
 #define NTHMANDELBROT 0
 #define BURNINGSHIP 0
+#define SIN 0
+#define COS 0
+#define CHIRIKOV 0
+#define DUFFING 0
+#define FEATHER 0
+
 #if MANDELBROT == 1
 #include "mandelbrot.glsl"
 
@@ -37,11 +39,28 @@ uniform vec2 juliaC;
 #elif BURNINGSHIP == 1
 #include "burningShip.glsl"
 
+#elif SIN == 1
+#include "sin.glsl"
+
+#elif COS == 1
+#include "cos.glsl"
+
+#elif CHIRIKOV == 1
+#include "chirikov.glsl"
+
+#elif DUFFING == 1
+#include "duffing.glsl"
+
+#elif FEATHER == 1
+#include "feather.glsl"
+
 #else
 #error "Aucune fractale n'a été sélectionné"
 #endif
 
-#define SQ_MAX_MAGNITUDE (MAX_MAGNITUDE * MAX_MAGNITUDE)
+// Affiche l'ensemble de julia de la fractale sélectionné en juliaC
+uniform bool julia;
+uniform vec2 juliaC;
 
 uniform vec2 screenSize;
 uniform vec2 center;
@@ -63,12 +82,13 @@ void coloring(int i, vec2 z) {
     
     float smoothed;
     if (smoothing) {
-        smoothed = log2(log2(float(sqrt(z.x*z.x + z.y*z.y))) / log2(2));
+        const float l2 = log2(2);
+        smoothed = 1 - log2(log2(z.x*z.x + z.y*z.y) / 2 / l2) / l2;
+        smoothed = clamp(smoothed, 0, 1);
     }
     else smoothed = 0;
-    float j = float(i) - smoothed;
     
-    vec3 color = mix(colorGradient[int(floor(j)) % 16], colorGradient[int(floor(j) + 1) % 16], fract(j));
+    vec3 color = mix(colorGradient[i % 16], colorGradient[(i + 1) % 16], smoothed);
     f_color = vec4(color, 1);
 }
 
@@ -78,7 +98,7 @@ void mainFractal() {
     vec2 sqz = vec2(z.x * z.x, z.y * z.y);
 
     int i = 0;
-    while (i < limit && sqz.x + sqz.y < SQ_MAX_MAGNITUDE) {
+    while (i < limit && inside(z, sqz)) {
         z = compute(z, sqz, c);
         sqz = vec2(z.x * z.x, z.y * z.y);
         i++;
@@ -92,7 +112,7 @@ void juliaFractal() {
     vec2 sqz = vec2(z.x * z.x, z.y * z.y);
 
     int i = 0;
-    while (i < limit && sqz.x + sqz.y < SQ_MAX_MAGNITUDE) {
+    while (i < limit && inside(z, sqz)) {
         z = compute(z, sqz, juliaC);
         sqz = vec2(z.x * z.x, z.y * z.y);
         i++;
