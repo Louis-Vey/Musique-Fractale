@@ -14,7 +14,7 @@ class FractalRenderer(mglw.WindowConfig):
     title = "Musique Fractale"
     window_size = (800, 450)
     aspect_ratio = None
-    resource_dir = shaderDir = (Path(__file__) / "../shaders").resolve()
+    resource_dir = shaderDir = (Path(__file__) / "../../data").resolve()
     mousePosition = (0, 0)
     imgui: ModernglWindowRenderer
 
